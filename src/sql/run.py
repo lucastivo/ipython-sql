@@ -266,27 +266,50 @@ def interpret_rowcount(rowcount):
         result = '%d rows affected.' % rowcount
     return result
 
-
 def run(conn, sql, config, user_namespace):
     if sql.strip():
+        trans = None
         for statement in sqlparse.split(sql):
-            if sql.strip().split()[0].lower() == 'begin':
-                raise Exception("ipython_sql does not support transactions")
+            result = None
+            cmd = statement.strip().split()[0].lower()
+            if cmd == 'begin' or cmd == 'begin;':
+                if trans:
+                    raise Exception("ipython_sql does not support nested transactions")
+                trans = conn.session.begin()
+                print("Transaction started.")
+                continue
+            elif cmd == 'rollback' or cmd == 'rollback;' or cmd == 'commit' or cmd == 'commit;':
+                if trans:
+                    if cmd == 'rollback' or cmd == 'rollback;':
+                        trans.rollback()
+                        print("Transaction aborted.")
+                    elif cmd == 'commit' or cmd == 'commit;':
+                        trans.commit()
+                        print("Transaction committed.")
+                    trans = None
+                else:
+                    raise Exception("Error: not currently in a transaction")
+                continue
             txt = sqlalchemy.sql.text(statement)
             result = conn.session.execute(txt, user_namespace)
             try:
                 # mssql has autocommit
-                if 'mssql' not in str(conn.dialect):
+                if 'mssql' not in str(conn.dialect) and not trans:
                     conn.session.execute('commit')
             except sqlalchemy.exc.OperationalError: 
                 pass # not all engines can commit
             if result and config.feedback:
-                print(interpret_rowcount(result.rowcount))
-        resultset = ResultSet(result, statement, config)
-        if config.autopandas:
-            return resultset.DataFrame()
+                print("%s" % interpret_rowcount(result.rowcount))
+        if trans:
+            raise Exception("Open transaction was never committed or aborted.")
+        if result:
+            resultset = ResultSet(result, statement, config)
+            if config.autopandas:
+                return resultset.DataFrame()
+            else:
+                return resultset
         else:
-            return resultset
+            return ''
         #returning only last result, intentionally
     else:
         return 'Connected: %s' % conn.name

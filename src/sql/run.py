@@ -293,15 +293,17 @@ def run(conn, sql, config, user_namespace):
                     continue
                 txt = sqlalchemy.sql.text(statement)
                 result = conn.session.execute(txt, user_namespace)
-                try:
-                    # mssql has autocommit
-                    if 'mssql' not in str(conn.dialect) and not trans:
-                        conn.session.execute('commit')
-                except sqlalchemy.exc.OperationalError: 
-                    pass # not all engines can commit
+                if trans == None:
+                    try:
+                        # mssql has autocommit
+                        if 'mssql' not in str(conn.dialect):
+                            conn.session.execute('commit')
+                    except sqlalchemy.exc.OperationalError: 
+                        pass # not all engines can commit
                 if result and config.feedback:
                     print("%s" % interpret_rowcount(result.rowcount))
             if trans:
+                trans.rollback()
                 raise Exception("Open transaction was never committed or aborted.")
             if result:
                 resultset = ResultSet(result, statement, config)

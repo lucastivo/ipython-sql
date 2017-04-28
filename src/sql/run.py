@@ -270,9 +270,9 @@ def run(conn, sql, config, user_namespace):
     if sql.strip():
         trans = None
         trans_sp = None
+        result = None
         try:
             for statement in sqlparse.split(sql):
-                result = None
                 cmd = statement.strip().split()[0].lower()
                 if cmd == 'begin' or cmd == 'begin;':
                     if trans:

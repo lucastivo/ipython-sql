@@ -276,7 +276,7 @@ def run(conn, sql, config, user_namespace):
                 if cmd == 'begin' or cmd == 'begin;':
                     if trans:
                         raise Exception("ipython_sql does not support nested transactions")
-                    trans = conn.session.begin(subtransactions=True)
+                    trans = conn.session.begin_nested()
                     print("Transaction started.")
                     continue
                 elif cmd == 'rollback' or cmd == 'rollback;' or cmd == 'commit' or cmd == 'commit;':

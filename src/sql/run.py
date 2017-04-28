@@ -269,47 +269,53 @@ def interpret_rowcount(rowcount):
 def run(conn, sql, config, user_namespace):
     if sql.strip():
         trans = None
-        for statement in sqlparse.split(sql):
-            result = None
-            cmd = statement.strip().split()[0].lower()
-            if cmd == 'begin' or cmd == 'begin;':
-                if trans:
-                    raise Exception("ipython_sql does not support nested transactions")
-                trans = conn.session.begin()
-                print("Transaction started.")
-                continue
-            elif cmd == 'rollback' or cmd == 'rollback;' or cmd == 'commit' or cmd == 'commit;':
-                if trans:
-                    if cmd == 'rollback' or cmd == 'rollback;':
-                        trans.rollback()
-                        print("Transaction aborted.")
-                    elif cmd == 'commit' or cmd == 'commit;':
-                        trans.commit()
-                        print("Transaction committed.")
-                    trans = None
+        try:
+            for statement in sqlparse.split(sql):
+                result = None
+                cmd = statement.strip().split()[0].lower()
+                if cmd == 'begin' or cmd == 'begin;':
+                    if trans:
+                        raise Exception("ipython_sql does not support nested transactions")
+                    trans = conn.session.begin()
+                    print("Transaction started.")
+                    continue
+                elif cmd == 'rollback' or cmd == 'rollback;' or cmd == 'commit' or cmd == 'commit;':
+                    if trans:
+                        if cmd == 'rollback' or cmd == 'rollback;':
+                            trans.rollback()
+                            print("Transaction aborted.")
+                        elif cmd == 'commit' or cmd == 'commit;':
+                            trans.commit()
+                            print("Transaction committed.")
+                        trans = None
+                    else:
+                        raise Exception("Error: not currently in a transaction")
+                    continue
+                txt = sqlalchemy.sql.text(statement)
+                result = conn.session.execute(txt, user_namespace)
+                try:
+                    # mssql has autocommit
+                    if 'mssql' not in str(conn.dialect) and not trans:
+                        conn.session.execute('commit')
+                except sqlalchemy.exc.OperationalError: 
+                    pass # not all engines can commit
+                if result and config.feedback:
+                    print("%s" % interpret_rowcount(result.rowcount))
+            if trans:
+                raise Exception("Open transaction was never committed or aborted.")
+            if result:
+                resultset = ResultSet(result, statement, config)
+                if config.autopandas:
+                    return resultset.DataFrame()
                 else:
-                    raise Exception("Error: not currently in a transaction")
-                continue
-            txt = sqlalchemy.sql.text(statement)
-            result = conn.session.execute(txt, user_namespace)
-            try:
-                # mssql has autocommit
-                if 'mssql' not in str(conn.dialect) and not trans:
-                    conn.session.execute('commit')
-            except sqlalchemy.exc.OperationalError: 
-                pass # not all engines can commit
-            if result and config.feedback:
-                print("%s" % interpret_rowcount(result.rowcount))
-        if trans:
-            raise Exception("Open transaction was never committed or aborted.")
-        if result:
-            resultset = ResultSet(result, statement, config)
-            if config.autopandas:
-                return resultset.DataFrame()
+                    return resultset
             else:
-                return resultset
-        else:
-            return ''
-        #returning only last result, intentionally
+                return ''
+            #returning only last result, intentionally
+        except:
+            if trans:
+                trans.rollback()
+                print("Rolling back transaction due to exception.")
+            raise
     else:
         return 'Connected: %s' % conn.name

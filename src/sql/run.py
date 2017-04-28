@@ -269,7 +269,7 @@ def interpret_rowcount(rowcount):
 def run(conn, sql, config, user_namespace):
     if sql.strip():
         trans = None
-        sp = None
+        trans_sp = None
         try:
             for statement in sqlparse.split(sql):
                 result = None
@@ -278,15 +278,17 @@ def run(conn, sql, config, user_namespace):
                     if trans:
                         raise Exception("ipython_sql does not support nested transactions")
                     trans = conn.session.begin_nested()
-                    sp = trans.savepoint()
+                    trans_sp = conn.session.begin_nested()  # force SP
                     print("Transaction started.")
                     continue
                 elif cmd == 'rollback' or cmd == 'rollback;' or cmd == 'commit' or cmd == 'commit;':
                     if trans:
                         if cmd == 'rollback' or cmd == 'rollback;':
-                            sp.rollback()
+                            trans_sp.rollback()
+                            trans.rollback()
                             print("Transaction aborted.")
                         elif cmd == 'commit' or cmd == 'commit;':
+                            trans_sp.commit()
                             trans.commit()
                             print("Transaction committed.")
                         trans = None
@@ -305,7 +307,8 @@ def run(conn, sql, config, user_namespace):
                 if result and config.feedback:
                     print("%s" % interpret_rowcount(result.rowcount))
             if trans:
-                sp.rollback()
+                trans_sp.rollback()
+                trans.rollback()
                 trans = None
                 raise Exception("Open transaction was never committed or aborted.")
             if result:
@@ -319,7 +322,8 @@ def run(conn, sql, config, user_namespace):
             #returning only last result, intentionally
         except:
             if trans:
-                sp.rollback()
+                trans_sp.rollback()
+                trans.rollback()
                 print("Rolling back transaction due to exception.")
             raise
     else:

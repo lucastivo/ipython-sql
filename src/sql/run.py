@@ -276,7 +276,7 @@ def run(conn, sql, config, user_namespace):
                 if cmd == 'begin' or cmd == 'begin;':
                     if trans:
                         raise Exception("ipython_sql does not support nested transactions")
-                    trans = conn.session.begin()
+                    trans = conn.session.begin(subtransactions=True)
                     print("Transaction started.")
                     continue
                 elif cmd == 'rollback' or cmd == 'rollback;' or cmd == 'commit' or cmd == 'commit;':
@@ -304,6 +304,7 @@ def run(conn, sql, config, user_namespace):
                     print("%s" % interpret_rowcount(result.rowcount))
             if trans:
                 trans.rollback()
+                trans = None
                 raise Exception("Open transaction was never committed or aborted.")
             if result:
                 resultset = ResultSet(result, statement, config)
